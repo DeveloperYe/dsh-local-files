@@ -1,0 +1,27 @@
+# dsh-local-files bundle patch — 在 web 组合层挂载本插件的代码行。
+#
+# 本文件随包进入 profiles/web/node_modules，卸载时随包消失，不污染用户的
+# cordis.patch.yml。
+#
+# 可选配置（全部有默认值）：
+#   home:           文件管理器打开时的默认目录（留空 = 第一个盘符）。
+#   roots:          允许浏览/下载的根目录列表；留空 = 自动枚举本机所有盘符。
+#                   例：['C:\\', 'D:\\data']
+#   maxTextBytes:   文本预览单次读取上限（默认 512 KiB）
+#   maxPreviewBytes: raw 内联预览（图片/PDF/视频）的字节上限（默认 64 MiB）
+#   maxUploadBytes:  单个上传文件上限（默认 4 GiB）
+#   maxCopyEntries:  一次复制/移动的条目上限（默认 20000）
+#   maxWriteBytes:   在线编辑单次保存的内容上限（默认 5 MiB）
+#   trashDir:        删除时的回收目录（默认 ~/.dsh-local-files-trash）
+- insert:
+    - id: local-files
+      name: 'dsh-local-files'
+      inject: [webServer]
+      config:
+        home: ''
+        roots: []
+        maxTextBytes: 524288
+        maxPreviewBytes: 67108864
+        maxUploadBytes: 4294967296
+        maxCopyEntries: 20000
+        maxWriteBytes: 5242880
