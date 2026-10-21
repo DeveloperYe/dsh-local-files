@@ -1,6 +1,6 @@
 {
   "name": "dsh-local-files",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local file manager for DeepSeek Harness Web: browse, preview, download, upload, edit, rename and delete host files from the browser, over the same authenticated DSH web server",
   "type": "module",
   "main": "lib/index.js",
@@ -57,6 +57,7 @@
     "lib/vendor",
     "cordis.patch.yml",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "THIRD-PARTY-NOTICES.md"
   ],

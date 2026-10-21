@@ -58,6 +58,15 @@ DSH 自带右侧预览能看文本/代码/图片/PDF/docx/xlsx，但：
 
 **docx 不支持编辑**：LibreOffice 只做单向转换，客户端改文本必丢版式，所以只提供「快速预览 / 精排 / 下载」。
 
+**修好了「带 `..` 的聊天文件链接」（0.2.0）**：点击消息里的相对路径链接时，前端会把它拼成
+`dsh-resource://file/session/<session>/<原样相对路径>`，而右侧栏用 glob `dsh-resource://file/**`
+判断谁来打开——picomatch 的 `**` 不匹配 `..` 段，于是没人认领、报
+`sidebarRight: no registered tab type claims "…"`。本插件在 client 半边包住
+`sidebarRight.openResource` / `openResourceIn`，打开前先归一化路径：仍在会话工作区内 → 工作区
+相对路径（链接直接跳到目标文件）；走出工作区 → 绝对路径（仍可被认领，预览会正常提示读不到，
+而不是让标签注册表抛错）。插件停用/热重载时经 `ctx.effect` 自动还原，不残留副作用。
+详见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 浏览器端渲染器（懒加载，本地托管）
 
 | 文件 | 版本 | 体积 | 许可 | 用途 |
@@ -125,7 +134,7 @@ Client 半边（`lib/client.js`）：
 ```powershell
 cd github\dsh-local-files
 node test\smoke.mjs         # Host 路由：56 项（读/写/上传/复制/移动/ZIP/Office 回退/vendor/边界）
-node test\client-smoke.mjs  # Client 半边：15 项（slot 注册与渲染）
+node test\client-smoke.mjs  # Client 半边：31 项（slot 渲染 + 带 `..` 地址的修复）
 ```
 
 ## 安装 / 卸载
