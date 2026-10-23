@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **Linux 下面包屑与「跳转」输入框把 `/` 拼成了 `\`。** 旧代码在拼子路径时无条件使用
+  `\`，Linux 上会得到 `/root\.local` 这类并不存在的路径，点击面包屑中间层级报
+  「打开目录失败：路径不存在」。现在按平台选择分隔符（POSIX `/`，Windows 盘符与 UNC
+  路径 `\`），并抽出 `joinPath()` 复用；Windows 盘符 / UNC 的面包屑目标也一并修正。
+- 新增 `test/page-crumbs.mjs`：覆盖 POSIX、Windows 盘符、UNC 三类路径的面包屑点击目标与
+  `joinPath()` 拼接结果。
+
 ## 0.2.0 — 2026-10-21
 
 ### Added

@@ -48,7 +48,7 @@
     "@deepseek-ai/cordis": "^4.0.1"
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/client-smoke.mjs"
+    "test": "node test/smoke.mjs && node test/client-smoke.mjs && node test/page-crumbs.mjs"
   },
   "files": [
     "lib/index.js",
