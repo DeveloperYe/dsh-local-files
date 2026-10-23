@@ -432,6 +432,12 @@
   }
   function baseName(p) { return String(p).split(/[\\/]/).pop() }
   function parentDir(p) { return String(p).replace(/[\\/][^\\/]+$/, '') }
+  // Join one child path onto a directory with the separator that directory
+  // already uses: POSIX and Windows drive/UNC paths must not be mixed.
+  function joinPath(base, name) {
+    var win = /^[a-zA-Z]:/.test(base) || /^\\\\/.test(base)
+    return String(base).replace(/[\\/]+$/, '') + (win ? '\\' : '/') + name
+  }
 
   function fmtSize(n) {
     if (n === null || n === undefined) return ''
@@ -514,21 +520,29 @@
 
   function renderCrumbs(dir) {
     el.crumbs.textContent = ''
-    var parts = String(dir).split(/[\\/]/).filter(function (s) { return s.length > 0 })
-    var drive = parts.length > 0 && /^[a-zA-Z]:$/.test(parts[0])
+    var raw = String(dir)
+    // POSIX paths use '/', Windows drive and UNC paths use '\'. The separator
+    // must follow the platform: joining with '\' on Linux produced paths like
+    // "/root\.local", which the Host rightly reported as missing.
+    var win = /^[a-zA-Z]:/.test(raw) || /^\\\\/.test(raw)
+    var sepChar = win ? '\\' : '/'
+    var parts = raw.split(/[\\/]/).filter(function (s) { return s.length > 0 })
+    var drive = win && /^[a-zA-Z]:$/.test(parts[0])
+    var unc = win && !drive
+    var rootTarget = drive ? parts[0] + '\\' : (unc ? '\\\\' + parts[0] : '/')
     var rootBtn = document.createElement('button')
     rootBtn.type = 'button'
     rootBtn.className = 'crumb'
-    rootBtn.textContent = drive ? parts[0] + '\\' : '/'
-    rootBtn.addEventListener('click', function () { loadDir(drive ? parts[0] + '\\' : '/') })
+    rootBtn.textContent = rootTarget
+    rootBtn.addEventListener('click', function () { loadDir(rootTarget) })
     el.crumbs.appendChild(rootBtn)
-    var start = drive ? 1 : 0
-    var build = drive ? parts[0] + '\\' : ''
+    var start = drive ? 1 : (unc ? 1 : 0)
+    var build = rootTarget
     for (var i = start; i < parts.length; i++) {
-      build = build ? build.replace(/[\\/]+$/, '') + '\\' + parts[i] : '/' + parts[i]
+      build = joinPath(build, parts[i])
       var sep = document.createElement('span')
       sep.className = 'crumb sep'
-      sep.textContent = '/'
+      sep.textContent = sepChar
       el.crumbs.appendChild(sep)
       var btn = document.createElement('button')
       btn.type = 'button'
@@ -1628,7 +1642,7 @@
     if (!value) return
     var target = value
     if (!/^[a-zA-Z]:[\\/]/.test(target) && target.charAt(0) !== '/') {
-      if (state.dir) target = state.dir.replace(/[\\/]+$/, '') + '\\' + target
+      if (state.dir) target = joinPath(state.dir, target)
     }
     loadDir(target)
   })
