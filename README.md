@@ -58,6 +58,17 @@ DSH 自带右侧预览能看文本/代码/图片/PDF/docx/xlsx，但：
 
 **docx 不支持编辑**：LibreOffice 只做单向转换，客户端改文本必丢版式，所以只提供「快速预览 / 精排 / 下载」。
 
+**点什么都打得开（0.2.0 起，0.3.0 补齐）**：聊天里的文件链接在交给右侧栏之前先过一遍
+`planFileOpen(address, cwd)`——工作区内的文件 → 归一化地址交给文档标签渲染（`..`、`.`、反斜杠
+`\` 都会被消掉）；**工作区外 / 绝对路径 / 目录**（渲染器会吞掉尾斜杠，所以「最后一段没有扩展名」
+也算目录）→ 新标签打开本地文件管理页 `/-/files?path=…`，它本来就能读任何位置。补丁通过
+`ctx.effect` 挂在插件作用域上，插件停用时自动还原。运行中的页面可以用
+`window.__dshLocalFiles` 查看当前状态（`patchedCount` / `lastPlan`）。
+
+**Office 预览不再卡在超时（0.3.0）**：转换超时会自动重试一次（面板显示「自动重试（第 2/2 次）」），
+仍失败且是 docx 时直接回落到客户端 mammoth 渲染并在工具条注明原因；非 docx 给带「重试 / 下载到本机」
+的失败页。Host 侧把转换器的错误原样透出（超时 504、其它 502），不再统一成 `内部错误`。
+
 **修好了「带 `..` 的聊天文件链接」（0.2.0）**：点击消息里的相对路径链接时，前端会把它拼成
 `dsh-resource://file/session/<session>/<原样相对路径>`，而右侧栏用 glob `dsh-resource://file/**`
 判断谁来打开——picomatch 的 `**` 不匹配 `..` 段，于是没人认领、报
@@ -134,7 +145,7 @@ Client 半边（`lib/client.js`）：
 ```powershell
 cd github\dsh-local-files
 node test\smoke.mjs         # Host 路由：56 项（读/写/上传/复制/移动/ZIP/Office 回退/vendor/边界）
-node test\client-smoke.mjs  # Client 半边：31 项（slot 渲染 + 带 `..` 地址的修复）
+node test\client-smoke.mjs  # Client 半边：45 项（slot 渲染 + 文件链接的归一化与落点决策）
 ```
 
 ## 安装 / 卸载

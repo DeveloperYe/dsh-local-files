@@ -17,7 +17,9 @@ const CWD = 'C:\\Users\\tester\\workspace'
 
 const ctx = {
   effects: [],
-  effect(dispose, label) {
+  effect(body, label) {
+    // Cordis semantics: the body runs immediately and its return value is the disposer.
+    const dispose = typeof body === 'function' ? body() : undefined
     this.effects.push({ dispose, label })
     return () => {}
   },
@@ -60,8 +62,10 @@ const requireStub = (id) => {
   throw new Error(`unexpected require: ${id}`)
 }
 
+const browserOpens = []
 const loaded = []
 globalThis.window = {
+  open(url, target) { browserOpens.push({ url, target }) },
   __ModuleLoader__: {
     load(entry) {
       loaded.push(entry)
@@ -168,6 +172,47 @@ check('wrapper repairs openResourceIn', openedIn.address === addr('notes/b.md'),
 
 ctx.sidebarRight.openResource('dsh-resource://session/x')
 check('wrapper leaves foreign addresses alone', ctx.sidebarRight.opened.at(-1).address === 'dsh-resource://session/x')
+
+// ── open plan: workspace files render, everything else lands in the file manager ──
+const { planFileOpen, nativePath } = mod.__internals
+const plan = (tail) => planFileOpen(addr(tail), CWD)
+check('plan: workspace file renders', plan('notes/a.md').action === 'open' && plan('notes/a.md').address === addr('notes/a.md'))
+check('plan: dot segments repaired in place', plan('sub/../notes/a.md').address === addr('notes/a.md'), plan('sub/../notes/a.md').address)
+check('plan: backslash path normalised', plan('notes\\a.md').address === addr('notes/a.md'), plan('notes\\a.md').address)
+const outside = plan('../sibling/a.md')
+check('plan: escaping path goes to the file manager', outside.action === 'browser' && outside.path === 'C:\\Users\\tester\\sibling\\a.md', JSON.stringify(outside))
+const absoluteOutside = plan('C:/ProgramData/x.md')
+check('plan: absolute outside goes to the file manager', absoluteOutside.action === 'browser' && absoluteOutside.path === 'C:\\ProgramData\\x.md', JSON.stringify(absoluteOutside))
+const directory = plan('dsh-local-files/')
+check('plan: directory goes to the file manager', directory.action === 'browser' && directory.path === 'C:\\Users\\tester\\workspace\\dsh-local-files', JSON.stringify(directory))
+const bareDir = plan('deliverables')
+check(
+  'plan: extension-less path treated as a directory',
+  bareDir.action === 'browser' && bareDir.path === 'C:\\Users\\tester\\workspace\\deliverables',
+  JSON.stringify(bareDir),
+)
+const dotFile = plan('.env')
+check('plan: dotfile still renders as a file', dotFile.action === 'open', JSON.stringify(dotFile))
+const absoluteBareDir = plan('C:/ProgramData/sub')
+check(
+  'plan: absolute extension-less path goes to the file manager',
+  absoluteBareDir.action === 'browser' && absoluteBareDir.path === 'C:\\ProgramData\\sub',
+  JSON.stringify(absoluteBareDir),
+)
+const bareFile = plan('README')
+check('plan: extension-less single segment is a directory too', bareFile.action === 'browser', JSON.stringify(bareFile))
+check('plan: non-file address untouched', planFileOpen('dsh-resource://session/x', CWD).action === 'open')
+check('nativePath keeps drive letters', nativePath(['C:', 'a', 'b']) === 'C:\\a\\b', nativePath(['C:', 'a', 'b']))
+
+const openedBefore = ctx.sidebarRight.opened.length
+browserOpens.length = 0
+ctx.sidebarRight.openResource(addr('../sibling/a.md'))
+check(
+  'wrapper routes outside files to the file manager',
+  browserOpens.length === 1 && browserOpens[0].url === '/-/files?path=' + encodeURIComponent('C:\\Users\\tester\\sibling\\a.md'),
+  JSON.stringify(browserOpens[0] ?? null),
+)
+check('wrapper skips the sidebar for those', ctx.sidebarRight.opened.length === openedBefore)
 
 const effect = ctx.effects.find((item) => String(item.label).includes('repair'))
 check('wrapper registered an effect', effect !== undefined, effect?.label ?? 'none')

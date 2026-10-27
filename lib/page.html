@@ -1205,7 +1205,7 @@
     wrap.appendChild(track)
     var started = Date.now()
     var timer = setInterval(function () {
-      hint.textContent = '已等待 ' + (Math.round((Date.now() - started) / 100) / 10) + ' 秒 · 首次通常 10–15 秒'
+      hint.textContent = '已等待 ' + (Math.round((Date.now() - started) / 100) / 10) + ' 秒 · 首次通常 10–30 秒'
     }, 200)
     return {
       el: wrap,
@@ -1246,8 +1246,9 @@
     return template.innerHTML
   }
 
-  function renderDocxFast(filePath) {
+  function renderDocxFast(filePath, options) {
     var seq = state.previewSeq
+    var fallbackNote = options && options.fallbackNote ? String(options.fallbackNote) : ''
     var panel = progressPanel('正在解析 docx（客户端快速预览）…')
     el.pvBody.textContent = ''
     el.pvBody.appendChild(panel.el)
@@ -1266,6 +1267,12 @@
         ui.bar.appendChild(convertButton)
         ui.bar.appendChild(downloadButton)
         ui.bar.appendChild(meta)
+        if (fallbackNote) {
+          var noteEl = document.createElement('span')
+          noteEl.style.cssText = 'font-size:12px;color:var(--danger)'
+          noteEl.textContent = '精排失败，已回退快速预览：' + fallbackNote
+          ui.bar.appendChild(noteEl)
+        }
         var view = document.createElement('div')
         view.className = 'docxView'
         view.innerHTML = sanitizeHtml(result.value)
@@ -1280,13 +1287,20 @@
     })
   }
 
-  function renderOfficePdf(filePath) {
-    var seq = state.previewSeq
-    var name = baseName(filePath)
-    var panel = progressPanel('LibreOffice 正在转换…')
-    el.pvBody.textContent = ''
-    el.pvBody.appendChild(panel.el)
-    fetch('/-/files/api/office?path=' + enc(filePath)).then(function (res) {
+  /** How many times a timed-out Office conversion is retried before giving up. */
+  var OFFICE_MAX_ATTEMPTS = 2
+  var TIMEOUT_HINTS = ['超时', 'timeout', 'timed out', 'ETIMEDOUT']
+
+  function isTimeoutMessage(message) {
+    var text = String(message || '').toLowerCase()
+    for (var i = 0; i < TIMEOUT_HINTS.length; i += 1) {
+      if (text.indexOf(TIMEOUT_HINTS[i].toLowerCase()) >= 0) return true
+    }
+    return false
+  }
+
+  function requestOfficePdf(filePath) {
+    return fetch('/-/files/api/office?path=' + enc(filePath)).then(function (res) {
       if (!res.ok) {
         return res.text().then(function (text) {
           var message = text
@@ -1295,7 +1309,52 @@
         })
       }
       return res.blob()
-    }).then(function (blob) {
+    })
+  }
+
+  /** Empty state with a retry button, a download escape hatch and an optional hint. */
+  function previewFailure(icon, title, detail, filePath, onRetry) {
+    var wrap = document.createElement('div')
+    wrap.className = 'empty'
+    var big = document.createElement('div')
+    big.className = 'big'
+    big.textContent = icon
+    var strong = document.createElement('div')
+    strong.textContent = title
+    var detailEl = document.createElement('div')
+    detailEl.textContent = detail || ''
+    detailEl.style.cssText = 'max-width:46em'
+    wrap.appendChild(big)
+    wrap.appendChild(strong)
+    wrap.appendChild(detailEl)
+    var actions = document.createElement('div')
+    actions.style.cssText = 'display:flex;gap:8px'
+    if (typeof onRetry === 'function') {
+      var retry = actionButton('重试')
+      retry.addEventListener('click', onRetry)
+      actions.appendChild(retry)
+    }
+    if (filePath) {
+      var download = document.createElement('a')
+      download.href = downloadUrl(filePath)
+      download.setAttribute('download', '')
+      download.className = 'action primary'
+      download.textContent = '下载到本机'
+      actions.appendChild(download)
+    }
+    wrap.appendChild(actions)
+    el.pvBody.textContent = ''
+    el.pvBody.appendChild(wrap)
+  }
+
+  function renderOfficePdf(filePath) {
+    var seq = state.previewSeq
+    var name = baseName(filePath)
+    var panel = progressPanel('LibreOffice 正在转换…（首次通常 10–30 秒）')
+    el.pvBody.textContent = ''
+    el.pvBody.appendChild(panel.el)
+
+    function done(blob) {
       if (seq !== state.previewSeq) return
       panel.stop()
       var ui = previewShell([actionButton('下载')])
@@ -1307,11 +1366,31 @@
       frame.style.cssText = 'flex:1;width:100%;border:0;min-height:0;background:#fff'
       ui.holder.style.overflow = 'hidden'
       ui.holder.appendChild(frame)
-    }).catch(function (error) {
-      if (seq !== state.previewSeq) return
-      panel.stop()
-      previewMessage('📘', 'Office 转换失败', error.message + '（可直接下载）', filePath)
-    })
+    }
+
+    function attempt(number) {
+      return requestOfficePdf(filePath).then(done).catch(function (error) {
+        if (seq !== state.previewSeq) return
+        var message = error && error.message ? error.message : '未知错误'
+        if (isTimeoutMessage(message) && number < OFFICE_MAX_ATTEMPTS) {
+          panel.setText('转换超时，自动重试（第 ' + (number + 1) + '/' + OFFICE_MAX_ATTEMPTS + ' 次）…')
+          return attempt(number + 1)
+        }
+        panel.stop()
+        // docx has a local renderer: show the content instead of an error page.
+        if (CLIENT_DOCX.indexOf(ext(filePath)) >= 0) {
+          toast('精排失败，已切换到快速预览：' + message)
+          renderDocxFast(filePath, { fallbackNote: message })
+          return
+        }
+        previewFailure('📘', 'Office 转换失败', message, filePath, function () {
+          state.previewSeq += 1
+          renderOfficePdf(filePath)
+        })
+      })
+    }
+
+    return attempt(1)
   }
 
   function renderSheet(filePath) {
